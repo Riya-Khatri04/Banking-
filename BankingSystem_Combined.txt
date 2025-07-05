@@ -1,0 +1,375 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <limits>
+
+using namespace std;
+
+class Account;
+class Customer;
+class Transaction;
+
+class Transaction {
+public:
+    string type;
+    double amount;
+    long long primaryAccountNumber;
+    long long secondaryAccountNumber;
+
+    Transaction(string type, double amount, long long primaryAccNum, long long secondaryAccNum = 0)
+        : type(type), amount(amount), primaryAccountNumber(primaryAccNum), secondaryAccountNumber(secondaryAccNum) {}
+
+    void display() const {
+        cout << "  Type: " << type << ", Amount: $" << amount;
+        cout << ", Account: " << primaryAccountNumber;
+        if (type.rfind("Transfer", 0) == 0 && secondaryAccountNumber != 0) {
+            cout << (type == "Transfer (Out)" ? ", To:" : ", From:") << secondaryAccountNumber;
+        }
+        cout << endl;
+    }
+};
+
+class Account {
+public:
+    long long accountNumber;
+    long long customerId;
+    double balance;
+    vector<Transaction> transactions;
+
+    Account(long long accNum, long long custId, double initialBalance = 0.0)
+        : accountNumber(accNum), customerId(custId), balance(initialBalance) {}
+
+    void deposit(double amount) {
+        if (amount > 0) {
+            balance += amount;
+            transactions.emplace_back("Deposit", amount, accountNumber);
+            cout << "Deposit successful. New balance: $" << balance << endl;
+        } else {
+            cout << "Deposit amount must be positive." << endl;
+        }
+    }
+
+    void withdraw(double amount) {
+        if (amount > 0 && balance >= amount) {
+            balance -= amount;
+            transactions.emplace_back("Withdrawal", amount, accountNumber);
+            cout << "Withdrawal successful. New balance: $" << balance << endl;
+        } else if (amount <= 0) {
+            cout << "Withdrawal amount must be positive." << endl;
+        } else {
+            cout << "Insufficient balance." << endl;
+        }
+    }
+
+    void display() const {
+        cout << "  Account Number: " << accountNumber
+                  << ", Balance: $" << balance << endl;
+    }
+
+    void displayTransactions() const {
+        if (transactions.empty()) {
+            cout << "    No transactions found for this account." << endl;
+            return;
+        }
+        cout << "    Transaction History for Account " << accountNumber << ":" << endl;
+        for (const auto& trans : transactions) {
+            trans.display();
+        }
+    }
+};
+
+class Customer {
+public:
+    long long customerId;
+    string name;
+    vector<long long> accountNumbers;
+
+    Customer(long long id, string n) : customerId(id), name(n) {}
+
+    void display() const {
+        cout << "Customer ID: " << customerId << ", Name: " << name << endl;
+        if (!accountNumbers.empty()) {
+            cout << "  Associated Account Numbers: ";
+            for (long long accNum : accountNumbers) {
+                cout << accNum << " ";
+            }
+            cout << endl;
+        }
+    }
+};
+
+vector<Customer> customers;
+vector<Account> accounts;
+long long nextCustomerId = 1001;
+long long nextAccountNumber = 5001;
+
+Account* getAccountByNumber(long long accNum) {
+    for (auto& acc : accounts) {
+        if (acc.accountNumber == accNum) {
+            return &acc;
+        }
+    }
+    return nullptr;
+}
+
+Customer* getCustomerById(long long custId) {
+    for (auto& cust : customers) {
+        if (cust.customerId == custId) {
+            return &cust;
+        }
+    }
+    return nullptr;
+}
+
+void clearInputBuffer() {
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+}
+
+void createCustomer() {
+    string name;
+    cout << "Enter customer name: ";
+    clearInputBuffer();
+    getline(cin, name);
+
+    customers.emplace_back(nextCustomerId, name);
+    cout << "Customer '" << name << "' created with ID: " << nextCustomerId << endl;
+    nextCustomerId++;
+}
+
+void createAccount() {
+    long long custId;
+    cout << "Enter Customer ID for the new account: ";
+    cin >> custId;
+
+    Customer* customer = getCustomerById(custId);
+    if (!customer) {
+        cout << "Error: Customer with ID " << custId << " not found." << endl;
+        return;
+    }
+
+    double initialBalance;
+    cout << "Enter initial balance for the account: $";
+    cin >> initialBalance;
+
+    accounts.emplace_back(nextAccountNumber, custId, initialBalance);
+    customer->accountNumbers.push_back(nextAccountNumber);
+    cout << "Account " << nextAccountNumber << " created for Customer ID " << custId << " with initial balance $" << initialBalance << endl;
+    nextAccountNumber++;
+}
+
+void depositFunds() {
+    long long accNum;
+    double amount;
+    cout << "Enter account number to deposit into: ";
+    cin >> accNum;
+    cout << "Enter amount to deposit: $";
+    cin >> amount;
+
+    Account* account = getAccountByNumber(accNum);
+    if (account) {
+        account->deposit(amount);
+    } else {
+        cout << "Error: Account " << accNum << " not found." << endl;
+    }
+}
+
+void withdrawFunds() {
+    long long accNum;
+    double amount;
+    cout << "Enter account number to withdraw from: ";
+    cin >> accNum;
+    cout << "Enter amount to withdraw: $";
+    cin >> amount;
+
+    Account* account = getAccountByNumber(accNum);
+    if (account) {
+        account->withdraw(amount);
+    } else {
+        cout << "Error: Account " << accNum << " not found." << endl;
+    }
+}
+
+void transferFunds() {
+    long long fromAccNum, toAccNum;
+    double amount;
+
+    cout << "Enter source account number (to withdraw from): ";
+    cin >> fromAccNum;
+    cout << "Enter destination account number (to deposit into): ";
+    cin >> toAccNum;
+    cout << "Enter amount to transfer: $";
+    cin >> amount;
+
+    if (fromAccNum == toAccNum) {
+        cout << "Cannot transfer funds to the same account." << endl;
+        return;
+    }
+
+    Account* fromAccount = getAccountByNumber(fromAccNum);
+    Account* toAccount = getAccountByNumber(toAccNum);
+
+    if (!fromAccount) {
+        cout << "Error: Source account " << fromAccNum << " not found." << endl;
+        return;
+    }
+    if (!toAccount) {
+        cout << "Error: Destination account " << toAccNum << " not found." << endl;
+        return;
+    }
+
+    if (amount > 0 && fromAccount->balance >= amount) {
+        fromAccount->balance -= amount;
+        toAccount->balance += amount;
+        fromAccount->transactions.emplace_back("Transfer (Out)", amount, fromAccNum, toAccNum);
+        toAccount->transactions.emplace_back("Transfer (In)", amount, toAccNum, fromAccNum);
+        cout << "Transfer successful!" << endl;
+        cout << "Source account new balance: $" << fromAccount->balance << endl;
+        cout << "Destination account new balance: $" << toAccount->balance << endl;
+    } else if (amount <= 0) {
+        cout << "Transfer amount must be positive." << endl;
+    } else {
+        cout << "Insufficient balance in source account." << endl;
+    }
+}
+
+void viewAccountInfo() {
+    long long accNum;
+    cout << "Enter account number to view details: ";
+    cin >> accNum;
+
+    Account* account = getAccountByNumber(accNum);
+    if (account) {
+        cout << "\n--- Account Details ---" << endl;
+        account->display();
+        Customer* owner = getCustomerById(account->customerId);
+        if (owner) {
+            cout << "  Owned by Customer ID: " << owner->customerId << ", Name: " << owner->name << endl;
+        }
+        account->displayTransactions();
+        cout << "-----------------------" << endl;
+    } else {
+        cout << "Error: Account " << accNum << " not found." << endl;
+    }
+}
+
+void listAllCustomersAndAccounts() {
+    cout << "\n--- All Customers ---" << endl;
+    if (customers.empty()) {
+        cout << "No customers registered." << endl;
+    } else {
+        for (const auto& cust : customers) {
+            cust.display();
+        }
+    }
+    cout << "\n--- All Accounts ---" << endl;
+    if (accounts.empty()) {
+        cout << "No accounts created." << endl;
+    } else {
+        for (const auto& acc : accounts) {
+            acc.display();
+        }
+    }
+    cout << "-----------------------" << endl;
+}
+
+int main() {
+    int choice;
+
+    do {
+        cout << "\n--- Banking System Menu ---" << endl;
+        cout << "1. Create New Customer" << endl;
+        cout << "2. Create New Account" << endl;
+        cout << "3. Deposit Funds" << endl;
+        cout << "4. Withdraw Funds" << endl;
+        cout << "5. Transfer Funds" << endl;
+        cout << "6. View Account Information & Transactions" << endl;
+        cout << "7. List All Customers & Accounts" << endl;
+        cout << "8. Exit" << endl;
+        cout << "Enter your choice: ";
+
+        while (!(cin >> choice)) {
+            cout << "Invalid input. Please enter a number: ";
+            cin.clear();
+            clearInputBuffer();
+        }
+        clearInputBuffer();
+
+        switch (choice) {
+            case 1: createCustomer(); break;
+            case 2: createAccount(); break;
+            case 3: depositFunds(); break;
+            case 4: withdrawFunds(); break;
+            case 5: transferFunds(); break;
+            case 6: viewAccountInfo(); break;
+            case 7: listAllCustomersAndAccounts(); break;
+            case 8: cout << "Exiting Banking System. Goodbye!" << endl; break;
+            default: cout << "Invalid choice. Please try again." << endl; break;
+        }
+    } while (choice != 8);
+
+    return 0;
+}
+
+
+/*
+================ SAMPLE OUTPUT ================
+
+--- Banking System Menu ---
+1. Create New Customer
+2. Create New Account
+3. Deposit Funds
+4. Withdraw Funds
+5. Transfer Funds
+6. View Account Information & Transactions
+7. List All Customers & Accounts
+8. Exit
+Enter your choice: 1
+Enter customer name: Alice
+Customer 'Alice' created with ID: 1001
+
+--- Banking System Menu ---
+Enter your choice: 2
+Enter Customer ID for the new account: 1001
+Enter initial balance for the account: $5000
+Account 5001 created for Customer ID 1001 with initial balance $5000
+
+--- Banking System Menu ---
+Enter your choice: 3
+Enter account number to deposit into: 5001
+Enter amount to deposit: $1000
+Deposit successful. New balance: $6000
+
+--- Banking System Menu ---
+Enter your choice: 4
+Enter account number to withdraw from: 5001
+Enter amount to withdraw: $2000
+Withdrawal successful. New balance: $4000
+
+--- Banking System Menu ---
+Enter your choice: 6
+Enter account number to view details: 5001
+
+--- Account Details ---
+  Account Number: 5001, Balance: $4000
+  Owned by Customer ID: 1001, Name: Alice
+    Transaction History for Account 5001:
+  Type: Deposit, Amount: $1000, Account: 5001
+  Type: Withdrawal, Amount: $2000, Account: 5001
+-----------------------
+
+--- Banking System Menu ---
+Enter your choice: 7
+
+--- All Customers ---
+Customer ID: 1001, Name: Alice
+  Associated Account Numbers: 5001 
+
+--- All Accounts ---
+  Account Number: 5001, Balance: $4000
+-----------------------
+
+--- Banking System Menu ---
+Enter your choice: 8
+Exiting Banking System. Goodbye!
+===============================================
+*/
